@@ -15,7 +15,178 @@ from preprocess import clean_text, extract_features
 from email_utils import parse_email_file, combined_text_for_prediction, authentication_summary
 from url_utils import extract_urls, check_urls_safe_browsing
 
-st.set_page_config(page_title="Spam Email Detector", page_icon="📧", layout="centered")
+st.set_page_config(page_title="The Mail Room — Spam Inspector", page_icon="📮", layout="centered")
+
+# --------------------------------------------------------------------------
+# Visual identity: a case-file / mail-inspector's desk aesthetic.
+# Ink navy + kraft paper + a brass rule, with hand-stamped verdicts as the
+# signature element. Namespaced CSS classes (mr-*) to avoid clashing with
+# Streamlit's own internals.
+# --------------------------------------------------------------------------
+CUSTOM_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'IBM Plex Sans', sans-serif;
+}
+
+.mr-eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    color: #A63A2E;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.mr-title {
+    font-family: 'Special Elite', monospace;
+    font-size: 2.4rem;
+    color: #1B2A4A;
+    line-height: 1.15;
+    margin: 0 0 0.35rem 0;
+}
+
+.mr-subtitle {
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: #4a4636;
+    font-size: 1rem;
+    max-width: 560px;
+    margin-bottom: 0.5rem;
+}
+
+.mr-rule {
+    border: none;
+    border-top: 3px double #B08D57;
+    margin: 1.1rem 0 1.6rem 0;
+}
+
+/* Ink-stamp verdict badge — the signature element */
+.mr-stamp-wrap {
+    display: flex;
+    justify-content: center;
+    margin: 1.4rem 0;
+}
+.mr-stamp {
+    font-family: 'Special Elite', monospace;
+    display: inline-block;
+    padding: 0.85rem 1.8rem;
+    border: 4px double;
+    border-radius: 4px;
+    transform: rotate(-3deg);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 1.3rem;
+    text-align: center;
+    opacity: 0.92;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.02);
+}
+.mr-stamp-spam {
+    color: #A63A2E;
+    border-color: #A63A2E;
+    background: rgba(166, 58, 46, 0.06);
+}
+.mr-stamp-ham {
+    color: #2F6B4F;
+    border-color: #2F6B4F;
+    background: rgba(47, 107, 79, 0.06);
+}
+.mr-stamp-sub {
+    font-family: 'IBM Plex Mono', monospace;
+    text-align: center;
+    font-size: 0.8rem;
+    color: #4a4636;
+    margin-top: -0.6rem;
+    margin-bottom: 1rem;
+}
+
+/* Ledger-style card for headers / link results */
+.mr-card {
+    background: #FAF7EE;
+    border: 1px solid #cfc6a8;
+    border-left: 4px solid #B08D57;
+    border-radius: 6px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1rem;
+}
+.mr-card-title {
+    font-family: 'Special Elite', monospace;
+    font-size: 1.05rem;
+    color: #1B2A4A;
+    margin-bottom: 0.6rem;
+}
+.mr-row {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.87rem;
+    color: #2b2a22;
+    padding: 0.25rem 0;
+    border-bottom: 1px dashed #ded4b2;
+}
+.mr-row:last-child { border-bottom: none; }
+.mr-row b {
+    color: #1B2A4A;
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+.mr-badge {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-weight: 600;
+}
+.mr-badge-pass { background: rgba(47,107,79,0.12); color: #2F6B4F; }
+.mr-badge-fail { background: rgba(166,58,46,0.12); color: #A63A2E; }
+.mr-badge-mixed { background: rgba(176,141,87,0.18); color: #8a6a2e; }
+.mr-badge-unknown { background: rgba(75,70,54,0.1); color: #4a4636; }
+
+.mr-footer {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+    color: #8a8367;
+    text-align: center;
+    margin-top: 2rem;
+}
+
+/* Buttons — wax-seal red primary, quieter secondary */
+div.stButton > button[kind="primary"] {
+    background-color: #A63A2E;
+    border-color: #A63A2E;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+div.stButton > button[kind="primary"]:hover {
+    background-color: #8c2f25;
+    border-color: #8c2f25;
+}
+div.stButton > button:not([kind="primary"]) {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85rem;
+}
+
+/* Tabs styled like folder tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 4px;
+}
+.stTabs [data-baseweb="tab"] {
+    font-family: 'IBM Plex Mono', monospace;
+    background-color: #e2dabf;
+    border-radius: 6px 6px 0 0;
+    padding: 8px 16px;
+}
+.stTabs [aria-selected="true"] {
+    background-color: #FAF7EE !important;
+    border-bottom: 3px solid #A63A2E !important;
+}
+</style>
+"""
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
 @st.cache_resource
@@ -42,40 +213,61 @@ def predict_email(text: str, model, vectorizer) -> dict:
 
 
 def render_result(result: dict):
-    if result["label"] == "SPAM":
-        st.error(f"🚨 This looks like **SPAM**")
-    else:
-        st.success(f"✅ This looks like **HAM** (not spam)")
+    """Renders the verdict as a hand-stamped badge — the page's signature element."""
+    is_spam = result["label"] == "SPAM"
+    stamp_class = "mr-stamp-spam" if is_spam else "mr-stamp-ham"
+    stamp_text = "🚫 Flagged: Spam" if is_spam else "✅ Cleared: Ham"
+
+    st.markdown(
+        f'<div class="mr-stamp-wrap"><div class="mr-stamp {stamp_class}">{stamp_text}</div></div>',
+        unsafe_allow_html=True,
+    )
 
     if result["spam_probability"] is not None:
-        st.metric("Spam probability", f"{result['spam_probability']*100:.1f}%")
+        pct = result["spam_probability"] * 100
+        st.markdown(
+            f'<div class="mr-stamp-sub">confidence: spam probability {pct:.1f}%</div>',
+            unsafe_allow_html=True,
+        )
         st.progress(result["spam_probability"])
     else:
-        st.caption(
-            "Note: this model type doesn't output a probability score, "
-            "only a hard label."
+        st.markdown(
+            '<div class="mr-stamp-sub">this model type reports a label only, no probability score</div>',
+            unsafe_allow_html=True,
         )
 
 
 def render_headers(parsed: dict):
     headers = parsed["headers"]
-    st.subheader("📋 Email headers")
 
+    rows_html = ""
     simple_fields = ["From", "To", "Subject", "Date", "Message-ID"]
     for field in simple_fields:
-        value = headers.get(field)
-        st.markdown(f"**{field}:** {value if value else '_not present_'}")
+        value = headers.get(field) or "<i>not present</i>"
+        rows_html += f'<div class="mr-row"><b>{field}:</b> {value}</div>'
 
     auth_status = authentication_summary(parsed)
-    auth_icon = {"pass": "✅", "fail": "🚨", "mixed": "⚠️", "unknown": "❔"}[auth_status]
-    st.markdown(f"**Authentication-Results:** {auth_icon} `{auth_status}`")
+    badge_class = {
+        "pass": "mr-badge-pass",
+        "fail": "mr-badge-fail",
+        "mixed": "mr-badge-mixed",
+        "unknown": "mr-badge-unknown",
+    }[auth_status]
+    rows_html += (
+        f'<div class="mr-row"><b>Authentication-Results:</b> '
+        f'<span class="mr-badge {badge_class}">{auth_status}</span></div>'
+    )
+
+    st.markdown(
+        f'<div class="mr-card"><div class="mr-card-title">📋 Case file — header record</div>{rows_html}</div>',
+        unsafe_allow_html=True,
+    )
+
     auth_values = headers.get("Authentication-Results") or []
     if auth_values:
         with st.expander("View raw Authentication-Results header(s)"):
             for v in auth_values:
                 st.code(v, language=None)
-    else:
-        st.caption("_No Authentication-Results header present_")
 
     received_values = headers.get("Received") or []
     with st.expander(f"View Received header(s) — {len(received_values)} hop(s)"):
@@ -94,14 +286,12 @@ def render_link_check(text: str):
 
     api_key = st.secrets.get("SAFE_BROWSING_API_KEY", "")
 
-    st.subheader("🔗 Real-time link check")
-    st.caption(f"Found {len(urls)} link(s) in this message.")
-
     if not api_key:
-        st.info(
-            "Add a free Google Safe Browsing API key as a Streamlit secret "
-            "(`SAFE_BROWSING_API_KEY`) to enable live link reputation checks. "
-            "See the README for setup steps."
+        st.markdown(
+            f'<div class="mr-card"><div class="mr-card-title">🔗 Link watch list ({len(urls)} found)</div>'
+            f'<div class="mr-row">Live checks are off — add a free Safe Browsing API key as a Streamlit '
+            f'secret to enable this. See the README.</div></div>',
+            unsafe_allow_html=True,
         )
         with st.expander("Links found (not yet checked)"):
             for u in urls:
@@ -115,18 +305,22 @@ def render_link_check(text: str):
         st.warning(f"Link check unavailable: {result['error']}")
         return
 
-    if result["flagged_urls"]:
-        st.error(f"🚨 {len(result['flagged_urls'])} link(s) flagged as unsafe!")
-        for url, threats in result["flagged_urls"].items():
-            st.markdown(f"- `{url}` — **{', '.join(threats)}**")
-    else:
-        st.success("✅ No links matched Google's known threat lists.")
+    rows_html = ""
+    for u in urls:
+        flagged = u in result["flagged_urls"]
+        badge_class = "mr-badge-fail" if flagged else "mr-badge-pass"
+        status = "flagged" if flagged else "clean"
+        rows_html += f'<div class="mr-row">{u} <span class="mr-badge {badge_class}">{status}</span></div>'
 
-    if result["clean_urls"]:
-        with st.expander(f"All checked links ({len(urls)})"):
-            for u in urls:
-                status = "🚨 flagged" if u in result["flagged_urls"] else "✅ clean"
-                st.markdown(f"- `{u}` — {status}")
+    title = "🔗 Link watch list — threat found" if result["flagged_urls"] else "🔗 Link watch list — all clear"
+    st.markdown(
+        f'<div class="mr-card"><div class="mr-card-title">{title}</div>{rows_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+    if result["flagged_urls"]:
+        for url, threats in result["flagged_urls"].items():
+            st.caption(f"`{url}` — {', '.join(threats)}")
 
 
 # --- Load model (with a friendly error if training hasn't run yet) ---
@@ -139,11 +333,17 @@ except FileNotFoundError:
     )
     st.stop()
 
-# --- Header ---
-st.title("📧 AI Spam Email Detector")
-st.caption("Paste email text, or upload a raw .eml file, and check whether it looks like spam.")
+# --- Hero ---
+st.markdown('<div class="mr-eyebrow">Case File // Inbox Division</div>', unsafe_allow_html=True)
+st.markdown('<h1 class="mr-title">The Mail Room</h1>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="mr-subtitle">Submit a message for inspection. We check the language, '
+    'the header trail, and any links it carries — then stamp a verdict.</div>',
+    unsafe_allow_html=True,
+)
+st.markdown('<hr class="mr-rule">', unsafe_allow_html=True)
 
-tab_paste, tab_upload = st.tabs(["✏️ Paste text", "📎 Upload email file (.eml)"])
+tab_paste, tab_upload = st.tabs(["📝 New submission", "📁 Upload case file (.eml)"])
 
 # ---------------- Tab 1: paste text ----------------
 with tab_paste:
@@ -169,37 +369,36 @@ with tab_paste:
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Try a spam example"):
+        if st.button("🎲 Pull a spam sample"):
             st.session_state["email_text"] = random.choice(SPAM_EXAMPLES)
     with col2:
-        if st.button("Try a ham example"):
+        if st.button("🎲 Pull a clean sample"):
             st.session_state["email_text"] = random.choice(HAM_EXAMPLES)
 
     email_text = st.text_area(
-        "Email text",
+        "Message text",
         value=st.session_state.get("email_text", ""),
         height=180,
-        placeholder="Paste email subject + body here...",
+        placeholder="Paste the email subject + body here...",
+        label_visibility="collapsed",
     )
 
-    if st.button("Check for spam", type="primary", key="check_paste"):
+    if st.button("Inspect this message", type="primary", key="check_paste"):
         if not email_text.strip():
             st.warning("Please enter some email text first.")
         else:
             result = predict_email(email_text, model, vectorizer)
             render_result(result)
-            st.divider()
             render_link_check(email_text)
 
 # ---------------- Tab 2: upload .eml file ----------------
 with tab_upload:
     st.caption(
         "Upload a raw email file (`.eml`) — most email clients let you export "
-        "or 'Save As' a raw message. Headers (From, Subject, Date, Message-ID, "
-        "Received, Authentication-Results) will be extracted and shown alongside "
-        "the spam prediction."
+        "or 'Save As' a raw message. We'll pull the header trail (From, Subject, "
+        "Date, Message-ID, Received, Authentication-Results) and stamp a verdict."
     )
-    uploaded_file = st.file_uploader("Choose a .eml file", type=["eml", "txt", "msg"])
+    uploaded_file = st.file_uploader("Choose a .eml file", type=["eml", "txt", "msg"], label_visibility="collapsed")
 
     if uploaded_file is not None:
         try:
@@ -210,32 +409,28 @@ with tab_upload:
 
         if parsed is not None:
             render_headers(parsed)
-            st.divider()
 
             prediction_text = combined_text_for_prediction(parsed)
             if not prediction_text.strip():
                 st.warning("No subject or body text could be extracted to classify.")
             else:
                 result = predict_email(prediction_text, model, vectorizer)
-                st.subheader("🔍 Spam prediction")
                 render_result(result)
 
                 auth_status = authentication_summary(parsed)
                 if auth_status == "fail":
                     st.warning(
-                        "⚠️ Note: SPF/DKIM/DMARC authentication failed for this "
-                        "message — that's an independent red flag regardless of "
-                        "the model's text-based prediction."
+                        "⚠️ SPF/DKIM/DMARC authentication failed for this message — "
+                        "an independent red flag, regardless of the text verdict above."
                     )
 
-                with st.expander("View extracted text used for prediction"):
+                with st.expander("View extracted text used for inspection"):
                     st.text(prediction_text)
 
-                st.divider()
                 render_link_check(prediction_text)
 
-st.divider()
-st.caption(
-    "⚠️ This model is trained on a small demo dataset for learning purposes — "
-    "see the README for how to swap in a real dataset."
+st.markdown(
+    '<div class="mr-footer">Trained on a small demo dataset for learning purposes — '
+    'see the README to swap in a real dataset.</div>',
+    unsafe_allow_html=True,
 )
