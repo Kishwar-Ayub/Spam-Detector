@@ -15,7 +15,7 @@ from preprocess import clean_text, extract_features
 from email_utils import parse_email_file, combined_text_for_prediction, authentication_summary
 from url_utils import extract_urls, check_urls_safe_browsing
 
-st.set_page_config(page_title="The Mail Room — Spam Inspector", page_icon="📮", layout="centered")
+st.set_page_config(page_title="SPAM Email Detector", page_icon="📮", layout="centered")
 
 # --------------------------------------------------------------------------
 # Visual identity: a case-file / mail-inspector's desk aesthetic.
