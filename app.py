@@ -15,137 +15,133 @@ from preprocess import clean_text, extract_features
 from email_utils import parse_email_file, combined_text_for_prediction, authentication_summary
 from url_utils import extract_urls, check_urls_safe_browsing
 
-st.set_page_config(page_title="SPAM Email Detector", page_icon="📮", layout="centered")
+st.set_page_config(page_title="Spam Email Detector", page_icon="📮", layout="centered")
 
 # --------------------------------------------------------------------------
-# Visual identity: a case-file / mail-inspector's desk aesthetic.
-# Ink navy + kraft paper + a brass rule, with hand-stamped verdicts as the
-# signature element. Namespaced CSS classes (mr-*) to avoid clashing with
-# Streamlit's own internals.
+# Design goal: clarity first. Plain type, a calm neutral background, one
+# unmistakable verdict banner, and a plain-language "why" so the result
+# never feels like a black box. Namespaced CSS (sd-*) to avoid clashing
+# with Streamlit internals.
 # --------------------------------------------------------------------------
 CUSTOM_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 
 html, body, [class*="css"] {
     font-family: 'IBM Plex Sans', sans-serif;
 }
+.stApp { background-color: #F6F3EC; }
+[data-testid="stHeader"] { background: transparent; }
 
-.mr-eyebrow {
-    font-family: 'IBM Plex Mono', monospace;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    font-size: 0.72rem;
-    color: #A63A2E;
-    font-weight: 600;
-    margin-bottom: 0.25rem;
-}
-
-.mr-title {
-    font-family: 'Special Elite', monospace;
-    font-size: 2.4rem;
-    color: #1B2A4A;
-    line-height: 1.15;
-    margin: 0 0 0.35rem 0;
-}
-
-.mr-subtitle {
+.sd-title {
     font-family: 'IBM Plex Sans', sans-serif;
-    color: #4a4636;
+    font-weight: 700;
+    font-size: 2.1rem;
+    color: #1B2A4A;
+    margin-bottom: 0.2rem;
+}
+.sd-subtitle {
+    color: #57604f;
     font-size: 1rem;
     max-width: 560px;
-    margin-bottom: 0.5rem;
+    margin-bottom: 1.4rem;
 }
 
-.mr-rule {
-    border: none;
-    border-top: 3px double #B08D57;
-    margin: 1.1rem 0 1.6rem 0;
-}
-
-/* Ink-stamp verdict badge — the signature element */
-.mr-stamp-wrap {
+/* Verdict banner: the one thing that must be instantly readable */
+.sd-verdict {
     display: flex;
-    justify-content: center;
-    margin: 1.4rem 0;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 1.1rem 1.3rem;
+    border-radius: 10px;
+    margin: 1.2rem 0 0.6rem 0;
+    border: 1px solid;
 }
-.mr-stamp {
-    font-family: 'Special Elite', monospace;
-    display: inline-block;
-    padding: 0.85rem 1.8rem;
-    border: 4px double;
-    border-radius: 4px;
-    transform: rotate(-3deg);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    font-size: 1.3rem;
-    text-align: center;
-    opacity: 0.92;
-    box-shadow: 0 0 0 2px rgba(0,0,0,0.02);
+.sd-verdict-spam { background: #FCEBEA; border-color: #E4A29B; }
+.sd-verdict-ham  { background: #E9F5EE; border-color: #A7D6BC; }
+.sd-verdict-icon { font-size: 2.1rem; line-height: 1; }
+.sd-verdict-text-main {
+    font-size: 1.25rem;
+    font-weight: 700;
 }
-.mr-stamp-spam {
-    color: #A63A2E;
-    border-color: #A63A2E;
-    background: rgba(166, 58, 46, 0.06);
-}
-.mr-stamp-ham {
-    color: #2F6B4F;
-    border-color: #2F6B4F;
-    background: rgba(47, 107, 79, 0.06);
-}
-.mr-stamp-sub {
-    font-family: 'IBM Plex Mono', monospace;
-    text-align: center;
-    font-size: 0.8rem;
+.sd-verdict-spam .sd-verdict-text-main { color: #A63A2E; }
+.sd-verdict-ham .sd-verdict-text-main { color: #2F6B4F; }
+.sd-verdict-text-sub {
+    font-size: 0.88rem;
     color: #4a4636;
-    margin-top: -0.6rem;
-    margin-bottom: 1rem;
+    margin-top: 0.15rem;
 }
 
-/* Ledger-style card for headers / link results */
-.mr-card {
-    background: #FAF7EE;
-    border: 1px solid #cfc6a8;
-    border-left: 4px solid #B08D57;
-    border-radius: 6px;
+.sd-risk-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.82rem;
+    color: #4a4636;
+    margin: 0.4rem 0 1.2rem 0;
+}
+.sd-risk-chip {
+    font-weight: 700;
+    padding: 0.1rem 0.5rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+}
+.sd-risk-low { background: #E9F5EE; color: #2F6B4F; }
+.sd-risk-medium { background: #FCF3E0; color: #92660E; }
+.sd-risk-high { background: #FCEBEA; color: #A63A2E; }
+
+/* Plain card used for "why", headers, and link results */
+.sd-card {
+    background: #FFFFFF;
+    border: 1px solid #E4DFCF;
+    border-radius: 10px;
     padding: 1rem 1.2rem;
     margin-bottom: 1rem;
 }
-.mr-card-title {
-    font-family: 'Special Elite', monospace;
-    font-size: 1.05rem;
+.sd-card-title {
+    font-weight: 700;
+    font-size: 0.98rem;
     color: #1B2A4A;
-    margin-bottom: 0.6rem;
+    margin-bottom: 0.5rem;
 }
-.mr-row {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.87rem;
-    color: #2b2a22;
-    padding: 0.25rem 0;
-    border-bottom: 1px dashed #ded4b2;
+.sd-reason {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.3rem 0;
+    font-size: 0.92rem;
+    color: #33301f;
 }
-.mr-row:last-child { border-bottom: none; }
-.mr-row b {
-    color: #1B2A4A;
-    font-family: 'IBM Plex Mono', monospace;
-}
+.sd-reason-icon { flex-shrink: 0; }
 
-.mr-badge {
+.sd-row {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85rem;
+    color: #2b2a22;
+    padding: 0.3rem 0;
+    border-bottom: 1px dashed #E4DFCF;
+}
+.sd-row:last-child { border-bottom: none; }
+.sd-row b { color: #1B2A4A; font-family: 'IBM Plex Sans', sans-serif; }
+
+.sd-badge {
     display: inline-block;
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.72rem;
-    letter-spacing: 0.06em;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
     padding: 0.15rem 0.5rem;
-    border-radius: 3px;
+    border-radius: 4px;
     font-weight: 600;
 }
-.mr-badge-pass { background: rgba(47,107,79,0.12); color: #2F6B4F; }
-.mr-badge-fail { background: rgba(166,58,46,0.12); color: #A63A2E; }
-.mr-badge-mixed { background: rgba(176,141,87,0.18); color: #8a6a2e; }
-.mr-badge-unknown { background: rgba(75,70,54,0.1); color: #4a4636; }
+.sd-badge-pass { background: #E9F5EE; color: #2F6B4F; }
+.sd-badge-fail { background: #FCEBEA; color: #A63A2E; }
+.sd-badge-mixed { background: #FCF3E0; color: #92660E; }
+.sd-badge-unknown { background: #EFECE0; color: #57604f; }
 
-.mr-footer {
+.sd-footer {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.75rem;
     color: #8a8367;
@@ -153,36 +149,14 @@ html, body, [class*="css"] {
     margin-top: 2rem;
 }
 
-/* Buttons — wax-seal red primary, quieter secondary */
 div.stButton > button[kind="primary"] {
-    background-color: #A63A2E;
-    border-color: #A63A2E;
-    font-family: 'IBM Plex Sans', sans-serif;
+    background-color: #1B2A4A;
+    border-color: #1B2A4A;
     font-weight: 600;
-    letter-spacing: 0.02em;
 }
 div.stButton > button[kind="primary"]:hover {
-    background-color: #8c2f25;
-    border-color: #8c2f25;
-}
-div.stButton > button:not([kind="primary"]) {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.85rem;
-}
-
-/* Tabs styled like folder tabs */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 4px;
-}
-.stTabs [data-baseweb="tab"] {
-    font-family: 'IBM Plex Mono', monospace;
-    background-color: #e2dabf;
-    border-radius: 6px 6px 0 0;
-    padding: 8px 16px;
-}
-.stTabs [aria-selected="true"] {
-    background-color: #FAF7EE !important;
-    border-bottom: 3px solid #A63A2E !important;
+    background-color: #142038;
+    border-color: #142038;
 }
 </style>
 """
@@ -199,42 +173,89 @@ def load_artifacts():
 def predict_email(text: str, model, vectorizer) -> dict:
     cleaned = clean_text(text)
     tfidf = vectorizer.transform([cleaned])
-    engineered = pd.DataFrame([extract_features(text)]).values
-    features = hstack([tfidf, csr_matrix(engineered)])
+    features = extract_features(text)
+    engineered = pd.DataFrame([features]).values
+    combined = hstack([tfidf, csr_matrix(engineered)])
 
-    pred = model.predict(features)[0]
+    pred = model.predict(combined)[0]
     label = "SPAM" if pred == 1 else "HAM"
 
     proba = None
     if hasattr(model, "predict_proba"):
-        proba = float(model.predict_proba(features)[0][1])
+        proba = float(model.predict_proba(combined)[0][1])
 
-    return {"label": label, "spam_probability": proba}
+    return {"label": label, "spam_probability": proba, "features": features}
+
+
+def risk_level(prob: float) -> tuple[str, str]:
+    """Turn a raw probability into a plain-language risk tier + CSS class."""
+    if prob < 0.34:
+        return "Low risk", "sd-risk-low"
+    if prob < 0.67:
+        return "Medium risk", "sd-risk-medium"
+    return "High risk", "sd-risk-high"
+
+
+def explain_signals(text: str, features: dict, is_spam: bool) -> list[str]:
+    """Plain-language reasons behind the verdict, based on the same signals the model sees."""
+    reasons = []
+    if features["num_exclamations"] >= 2:
+        reasons.append(("❗", f"Uses urgent or excited punctuation ({features['num_exclamations']} \"!\" marks)"))
+    if features["num_links"] >= 1:
+        reasons.append(("🔗", f"Contains {features['num_links']} link(s)"))
+    if features["caps_ratio"] > 0.15:
+        reasons.append(("🔠", "Written largely in CAPITAL LETTERS"))
+    if features["num_currency"] >= 1:
+        reasons.append(("💰", "Mentions money, prizes, or currency symbols"))
+    if features["length"] < 60:
+        reasons.append(("✂️", "Very short message"))
+
+    if not reasons:
+        if is_spam:
+            reasons.append(("🤖", "Flagged mainly on word choice and phrasing, not a specific red flag above"))
+        else:
+            reasons.append(("🙂", "No urgent language, suspicious links, or money-related phrases detected"))
+
+    return reasons
 
 
 def render_result(result: dict):
-    """Renders the verdict as a hand-stamped badge — the page's signature element."""
+    """The one thing on this page that must be instantly, unambiguously readable."""
     is_spam = result["label"] == "SPAM"
-    stamp_class = "mr-stamp-spam" if is_spam else "mr-stamp-ham"
-    stamp_text = "🚫 Flagged: Spam" if is_spam else "✅ Cleared: Ham"
+    verdict_class = "sd-verdict-spam" if is_spam else "sd-verdict-ham"
+    icon = "🚨" if is_spam else "✅"
+    headline = "This looks like SPAM" if is_spam else "This looks like a normal email"
+    subline = "Treat links and requests in this message with caution." if is_spam else "No major spam signals found."
 
     st.markdown(
-        f'<div class="mr-stamp-wrap"><div class="mr-stamp {stamp_class}">{stamp_text}</div></div>',
+        f'<div class="sd-verdict {verdict_class}">'
+        f'<div class="sd-verdict-icon">{icon}</div>'
+        f'<div><div class="sd-verdict-text-main">{headline}</div>'
+        f'<div class="sd-verdict-text-sub">{subline}</div></div></div>',
         unsafe_allow_html=True,
     )
 
     if result["spam_probability"] is not None:
         pct = result["spam_probability"] * 100
+        tier, tier_class = risk_level(result["spam_probability"])
         st.markdown(
-            f'<div class="mr-stamp-sub">confidence: spam probability {pct:.1f}%</div>',
+            f'<div class="sd-risk-row">Spam likelihood: <b>{pct:.0f}%</b>'
+            f'<span class="sd-risk-chip {tier_class}">{tier}</span></div>',
             unsafe_allow_html=True,
         )
         st.progress(result["spam_probability"])
     else:
-        st.markdown(
-            '<div class="mr-stamp-sub">this model type reports a label only, no probability score</div>',
-            unsafe_allow_html=True,
-        )
+        st.caption("This model type reports a label only, no confidence score.")
+
+    reasons = explain_signals(st.session_state.get("_last_text", ""), result["features"], is_spam)
+    reasons_html = "".join(
+        f'<div class="sd-reason"><span class="sd-reason-icon">{icon}</span><span>{text}</span></div>'
+        for icon, text in reasons
+    )
+    st.markdown(
+        f'<div class="sd-card"><div class="sd-card-title">Why we think this</div>{reasons_html}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def render_headers(parsed: dict):
@@ -244,22 +265,20 @@ def render_headers(parsed: dict):
     simple_fields = ["From", "To", "Subject", "Date", "Message-ID"]
     for field in simple_fields:
         value = headers.get(field) or "<i>not present</i>"
-        rows_html += f'<div class="mr-row"><b>{field}:</b> {value}</div>'
+        rows_html += f'<div class="sd-row"><b>{field}:</b> {value}</div>'
 
     auth_status = authentication_summary(parsed)
     badge_class = {
-        "pass": "mr-badge-pass",
-        "fail": "mr-badge-fail",
-        "mixed": "mr-badge-mixed",
-        "unknown": "mr-badge-unknown",
+        "pass": "sd-badge-pass", "fail": "sd-badge-fail",
+        "mixed": "sd-badge-mixed", "unknown": "sd-badge-unknown",
     }[auth_status]
     rows_html += (
-        f'<div class="mr-row"><b>Authentication-Results:</b> '
-        f'<span class="mr-badge {badge_class}">{auth_status}</span></div>'
+        f'<div class="sd-row"><b>Authentication-Results:</b> '
+        f'<span class="sd-badge {badge_class}">{auth_status}</span></div>'
     )
 
     st.markdown(
-        f'<div class="mr-card"><div class="mr-card-title">📋 Case file — header record</div>{rows_html}</div>',
+        f'<div class="sd-card"><div class="sd-card-title">📋 Email headers</div>{rows_html}</div>',
         unsafe_allow_html=True,
     )
 
@@ -279,7 +298,6 @@ def render_headers(parsed: dict):
 
 
 def render_link_check(text: str):
-    """Extract URLs from text and check them against Google Safe Browsing in real time."""
     urls = extract_urls(text)
     if not urls:
         return
@@ -288,12 +306,12 @@ def render_link_check(text: str):
 
     if not api_key:
         st.markdown(
-            f'<div class="mr-card"><div class="mr-card-title">🔗 Link watch list ({len(urls)} found)</div>'
-            f'<div class="mr-row">Live checks are off — add a free Safe Browsing API key as a Streamlit '
-            f'secret to enable this. See the README.</div></div>',
+            f'<div class="sd-card"><div class="sd-card-title">🔗 Links found ({len(urls)})</div>'
+            f'<div class="sd-row">Live safety checks are off — add a free Google Safe Browsing '
+            f'API key as a Streamlit secret to enable this. See the README.</div></div>',
             unsafe_allow_html=True,
         )
-        with st.expander("Links found (not yet checked)"):
+        with st.expander("View links (not yet checked)"):
             for u in urls:
                 st.code(u, language=None)
         return
@@ -308,16 +326,15 @@ def render_link_check(text: str):
     rows_html = ""
     for u in urls:
         flagged = u in result["flagged_urls"]
-        badge_class = "mr-badge-fail" if flagged else "mr-badge-pass"
+        badge_class = "sd-badge-fail" if flagged else "sd-badge-pass"
         status = "flagged" if flagged else "clean"
-        rows_html += f'<div class="mr-row">{u} <span class="mr-badge {badge_class}">{status}</span></div>'
+        rows_html += f'<div class="sd-row">{u} <span class="sd-badge {badge_class}">{status}</span></div>'
 
-    title = "🔗 Link watch list — threat found" if result["flagged_urls"] else "🔗 Link watch list — all clear"
+    title = "🔗 Links — threat found" if result["flagged_urls"] else "🔗 Links — all clear"
     st.markdown(
-        f'<div class="mr-card"><div class="mr-card-title">{title}</div>{rows_html}</div>',
+        f'<div class="sd-card"><div class="sd-card-title">{title}</div>{rows_html}</div>',
         unsafe_allow_html=True,
     )
-
     if result["flagged_urls"]:
         for url, threats in result["flagged_urls"].items():
             st.caption(f"`{url}` — {', '.join(threats)}")
@@ -333,17 +350,15 @@ except FileNotFoundError:
     )
     st.stop()
 
-# --- Hero ---
-st.markdown('<div class="mr-eyebrow">Case File // Inbox Division</div>', unsafe_allow_html=True)
-st.markdown('<h1 class="mr-title">The Mail Room</h1>', unsafe_allow_html=True)
+# --- Header ---
+st.markdown('<div class="sd-title">🛡️ Spam Email Detector</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="mr-subtitle">Submit a message for inspection. We check the language, '
-    'the header trail, and any links it carries — then stamp a verdict.</div>',
+    '<div class="sd-subtitle">Paste an email or upload a raw file. You\'ll get a clear verdict, '
+    'a risk level, and the plain-language reasons behind it.</div>',
     unsafe_allow_html=True,
 )
-st.markdown('<hr class="mr-rule">', unsafe_allow_html=True)
 
-tab_paste, tab_upload = st.tabs(["📝 New submission", "📁 Upload case file (.eml)"])
+tab_paste, tab_upload = st.tabs(["✏️ Paste text", "📎 Upload email file (.eml)"])
 
 # ---------------- Tab 1: paste text ----------------
 with tab_paste:
@@ -356,7 +371,6 @@ with tab_paste:
         "Your PayPal account has been LIMITED. Confirm your identity now or lose access permanently: paypal-verify-account.net",
         "HOT SINGLES in your area want to meet you tonight! Sign up free, no credit card required: bit.ly/meet-now",
     ]
-
     HAM_EXAMPLES = [
         "Hey, can we move our meeting to 4pm tomorrow? Let me know if that works.",
         "Please find attached the quarterly report you asked for. Let me know if you have questions.",
@@ -369,24 +383,24 @@ with tab_paste:
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🎲 Pull a spam sample"):
+        if st.button("Try a spam example"):
             st.session_state["email_text"] = random.choice(SPAM_EXAMPLES)
     with col2:
-        if st.button("🎲 Pull a clean sample"):
+        if st.button("Try a normal example"):
             st.session_state["email_text"] = random.choice(HAM_EXAMPLES)
 
     email_text = st.text_area(
-        "Message text",
+        "Email text",
         value=st.session_state.get("email_text", ""),
         height=180,
-        placeholder="Paste the email subject + body here...",
-        label_visibility="collapsed",
+        placeholder="Paste email subject + body here...",
     )
 
-    if st.button("Inspect this message", type="primary", key="check_paste"):
+    if st.button("Check for spam", type="primary", key="check_paste"):
         if not email_text.strip():
             st.warning("Please enter some email text first.")
         else:
+            st.session_state["_last_text"] = email_text
             result = predict_email(email_text, model, vectorizer)
             render_result(result)
             render_link_check(email_text)
@@ -395,10 +409,9 @@ with tab_paste:
 with tab_upload:
     st.caption(
         "Upload a raw email file (`.eml`) — most email clients let you export "
-        "or 'Save As' a raw message. We'll pull the header trail (From, Subject, "
-        "Date, Message-ID, Received, Authentication-Results) and stamp a verdict."
+        "or 'Save As' a raw message. Headers and any links will be checked too."
     )
-    uploaded_file = st.file_uploader("Choose a .eml file", type=["eml", "txt", "msg"], label_visibility="collapsed")
+    uploaded_file = st.file_uploader("Choose a .eml file", type=["eml", "txt", "msg"])
 
     if uploaded_file is not None:
         try:
@@ -414,6 +427,7 @@ with tab_upload:
             if not prediction_text.strip():
                 st.warning("No subject or body text could be extracted to classify.")
             else:
+                st.session_state["_last_text"] = prediction_text
                 result = predict_email(prediction_text, model, vectorizer)
                 render_result(result)
 
@@ -421,16 +435,16 @@ with tab_upload:
                 if auth_status == "fail":
                     st.warning(
                         "⚠️ SPF/DKIM/DMARC authentication failed for this message — "
-                        "an independent red flag, regardless of the text verdict above."
+                        "an independent red flag, regardless of the verdict above."
                     )
 
-                with st.expander("View extracted text used for inspection"):
+                with st.expander("View extracted text used for the check"):
                     st.text(prediction_text)
 
                 render_link_check(prediction_text)
 
 st.markdown(
-    '<div class="mr-footer">Trained on a small demo dataset for learning purposes — '
+    '<div class="sd-footer">Trained on a small demo dataset for learning purposes — '
     'see the README to swap in a real dataset.</div>',
     unsafe_allow_html=True,
 )
