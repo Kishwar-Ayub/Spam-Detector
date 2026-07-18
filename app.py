@@ -14,8 +14,9 @@ from scipy.sparse import hstack, csr_matrix
 from preprocess import clean_text, extract_features
 from email_utils import parse_email_file, combined_text_for_prediction, authentication_summary
 from url_utils import extract_urls, check_urls_safe_browsing
+from threat_intel import check_url_virustotal, check_domain_urlscan, check_domain_blacklist_mxtoolbox, _domain_from_url
 
-st.set_page_config(page_title="Spam Email Detector", page_icon="📮", layout="centered")
+st.set_page_config(page_title="Spam Email Detector", page_icon="🛡️", layout="centered")
 
 # --------------------------------------------------------------------------
 # Design goal: clarity first. Plain type, a calm neutral background, one
@@ -302,13 +303,19 @@ def render_link_check(text: str):
     if not urls:
         return
 
-    api_key = st.secrets.get("SAFE_BROWSING_API_KEY", "")
+    sb_key = st.secrets.get("SAFE_BROWSING_API_KEY", "")
+    vt_key = st.secrets.get("VIRUSTOTAL_API_KEY", "")
+    us_key = st.secrets.get("URLSCAN_API_KEY", "")
 
-    if not api_key:
+    active = [name for name, key in [
+        ("Google Safe Browsing", sb_key), ("VirusTotal", vt_key), ("urlscan.io", us_key)
+    ] if key]
+
+    if not active:
         st.markdown(
             f'<div class="sd-card"><div class="sd-card-title">🔗 Links found ({len(urls)})</div>'
-            f'<div class="sd-row">Live safety checks are off — add a free Google Safe Browsing '
-            f'API key as a Streamlit secret to enable this. See the README.</div></div>',
+            f'<div class="sd-row">Live checks are off — add a Safe Browsing, VirusTotal, or '
+            f'urlscan.io API key as a Streamlit secret to enable them. See the README.</div></div>',
             unsafe_allow_html=True,
         )
         with st.expander("View links (not yet checked)"):
@@ -316,28 +323,100 @@ def render_link_check(text: str):
                 st.code(u, language=None)
         return
 
-    with st.spinner("Checking links against Google Safe Browsing..."):
-        result = check_urls_safe_browsing(urls, api_key)
+    st.markdown(
+        f'<div class="sd-card-title" style="margin-top:0.4rem;">'
+        f'🔗 Link intelligence — checking against {", ".join(active)}</div>',
+        unsafe_allow_html=True,
+    )
 
-    if result["error"]:
-        st.warning(f"Link check unavailable: {result['error']}")
-        return
+    with st.spinner("Checking links..."):
+        rows_html = ""
+        any_flagged = False
+        for u in urls:
+            badges = []
 
-    rows_html = ""
-    for u in urls:
-        flagged = u in result["flagged_urls"]
-        badge_class = "sd-badge-fail" if flagged else "sd-badge-pass"
-        status = "flagged" if flagged else "clean"
-        rows_html += f'<div class="sd-row">{u} <span class="sd-badge {badge_class}">{status}</span></div>'
+            if sb_key:
+                sb_result = check_urls_safe_browsing([u], sb_key)
+                if sb_result["error"]:
+                    badges.append(('<span class="sd-badge sd-badge-unknown">Safe Browsing: error</span>'))
+                elif u in sb_result["flagged_urls"]:
+                    badges.append('<span class="sd-badge sd-badge-fail">Safe Browsing: flagged</span>')
+                    any_flagged = True
+                else:
+                    badges.append('<span class="sd-badge sd-badge-pass">Safe Browsing: clean</span>')
 
-    title = "🔗 Links — threat found" if result["flagged_urls"] else "🔗 Links — all clear"
+            if vt_key:
+                vt_result = check_url_virustotal(u, vt_key)
+                if vt_result["error"]:
+                    badges.append('<span class="sd-badge sd-badge-unknown">VirusTotal: error</span>')
+                elif not vt_result["found"]:
+                    badges.append('<span class="sd-badge sd-badge-unknown">VirusTotal: unseen</span>')
+                elif vt_result["malicious"] > 0:
+                    badges.append(
+                        f'<span class="sd-badge sd-badge-fail">VirusTotal: {vt_result["malicious"]}/'
+                        f'{vt_result["total_engines"]} flagged</span>'
+                    )
+                    any_flagged = True
+                else:
+                    badges.append(f'<span class="sd-badge sd-badge-pass">VirusTotal: 0/{vt_result["total_engines"]} flagged</span>')
+
+            if us_key:
+                us_result = check_domain_urlscan(u, us_key)
+                if us_result["error"]:
+                    badges.append('<span class="sd-badge sd-badge-unknown">urlscan.io: error</span>')
+                elif us_result["malicious_scan_count"] > 0:
+                    badges.append(
+                        f'<span class="sd-badge sd-badge-fail">urlscan.io: {us_result["malicious_scan_count"]} '
+                        f'malicious scan(s)</span>'
+                    )
+                    any_flagged = True
+                elif us_result["scan_count"] > 0:
+                    badges.append(f'<span class="sd-badge sd-badge-pass">urlscan.io: {us_result["scan_count"]} clean scan(s)</span>')
+                else:
+                    badges.append('<span class="sd-badge sd-badge-unknown">urlscan.io: no history</span>')
+
+            rows_html += f'<div class="sd-row">{u}<br>{" ".join(badges)}</div>'
+
+    title = "🔗 Links — threat found" if any_flagged else "🔗 Links — all sources clear"
     st.markdown(
         f'<div class="sd-card"><div class="sd-card-title">{title}</div>{rows_html}</div>',
         unsafe_allow_html=True,
     )
-    if result["flagged_urls"]:
-        for url, threats in result["flagged_urls"].items():
-            st.caption(f"`{url}` — {', '.join(threats)}")
+
+
+def render_sender_domain_check(parsed: dict):
+    """Checks the sender's domain against email blacklists via MXToolbox."""
+    mx_key = st.secrets.get("MXTOOLBOX_API_KEY", "")
+    if not mx_key:
+        return
+
+    from_header = parsed["headers"].get("From") or ""
+    if "@" not in from_header:
+        return
+    domain = from_header.split("@")[-1].strip().rstrip(">").strip()
+    if not domain:
+        return
+
+    with st.spinner(f"Checking {domain} against email blacklists..."):
+        result = check_domain_blacklist_mxtoolbox(domain, mx_key)
+
+    if result["error"]:
+        st.caption(f"Sender domain blacklist check unavailable: {result['error']}")
+        return
+
+    if result["listed_count"] > 0:
+        st.markdown(
+            f'<div class="sd-card"><div class="sd-card-title">🚩 Sender domain flagged</div>'
+            f'<div class="sd-row"><b>{domain}</b> appears on {result["listed_count"]} blacklist(s): '
+            f'{", ".join(result["listed_on"])}</div></div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f'<div class="sd-card"><div class="sd-card-title">✅ Sender domain reputation</div>'
+            f'<div class="sd-row"><b>{domain}</b> is not on any blacklists MXToolbox checked.</div></div>',
+            unsafe_allow_html=True,
+        )
 
 
 # --- Load model (with a friendly error if training hasn't run yet) ---
@@ -422,6 +501,7 @@ with tab_upload:
 
         if parsed is not None:
             render_headers(parsed)
+            render_sender_domain_check(parsed)
 
             prediction_text = combined_text_for_prediction(parsed)
             if not prediction_text.strip():
