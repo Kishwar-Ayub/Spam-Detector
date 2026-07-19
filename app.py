@@ -14,169 +14,195 @@ from scipy.sparse import hstack, csr_matrix
 from preprocess import clean_text, extract_features
 from email_utils import parse_email_file, combined_text_for_prediction, authentication_summary
 from url_utils import extract_urls, check_urls_safe_browsing
-from threat_intel import check_url_virustotal, check_domain_urlscan, check_domain_blacklist_mxtoolbox, _domain_from_url
+from threat_intel import check_url_virustotal, check_domain_urlscan, check_domain_blacklist_mxtoolbox
+
+FEATURE_ORDER = ["num_exclamations", "num_links", "num_currency", "caps_ratio"]
 
 st.set_page_config(page_title="Spam Email Detector", page_icon="🛡️", layout="centered")
 
 # --------------------------------------------------------------------------
-# Design goal: clarity first. Plain type, a calm neutral background, one
-# unmistakable verdict banner, and a plain-language "why" so the result
-# never feels like a black box. Namespaced CSS (sd-*) to avoid clashing
-# with Streamlit internals.
+# Design: a clean "scan report" look. Soft neutral background, one accent
+# color for interactive elements, and a circular risk gauge as the single
+# focal visual — it doubles as the clearest possible way to read the result
+# (a number + color + position on a ring) rather than being decorative.
+# Namespaced CSS (sd-*) to avoid clashing with Streamlit internals.
 # --------------------------------------------------------------------------
 CUSTOM_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
-html, body, [class*="css"] {
-    font-family: 'IBM Plex Sans', sans-serif;
-}
-.stApp { background-color: #F6F3EC; }
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+.stApp { background: linear-gradient(180deg, #F3F5F9 0%, #EDEFF5 100%); }
 [data-testid="stHeader"] { background: transparent; }
 
-.sd-title {
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-weight: 700;
-    font-size: 2.1rem;
-    color: #1B2A4A;
+.sd-header {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
     margin-bottom: 0.2rem;
 }
-.sd-subtitle {
-    color: #57604f;
-    font-size: 1rem;
-    max-width: 560px;
-    margin-bottom: 1.4rem;
+.sd-header-icon {
+    width: 42px; height: 42px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #4338CA, #6D28D9);
+    border-radius: 12px;
+    font-size: 1.3rem;
+    box-shadow: 0 4px 10px rgba(67,56,202,0.25);
 }
+.sd-title { font-weight: 800; font-size: 1.65rem; color: #1E1B3A; }
+.sd-subtitle { color: #6B7280; font-size: 0.95rem; max-width: 560px; margin: 0.3rem 0 1.4rem 0; }
 
-/* Verdict banner: the one thing that must be instantly readable */
-.sd-verdict {
+/* Report shell wrapping the result */
+.sd-report {
+    background: #FFFFFF;
+    border-radius: 18px;
+    padding: 1.6rem 1.6rem 1.3rem 1.6rem;
+    box-shadow: 0 6px 24px rgba(30,27,58,0.08);
+    margin: 1.2rem 0 1.2rem 0;
+}
+.sd-report-top {
     display: flex;
     align-items: center;
-    gap: 0.9rem;
-    padding: 1.1rem 1.3rem;
-    border-radius: 10px;
-    margin: 1.2rem 0 0.6rem 0;
-    border: 1px solid;
+    gap: 1.4rem;
+    flex-wrap: wrap;
 }
-.sd-verdict-spam { background: #FCEBEA; border-color: #E4A29B; }
-.sd-verdict-ham  { background: #E9F5EE; border-color: #A7D6BC; }
-.sd-verdict-icon { font-size: 2.1rem; line-height: 1; }
-.sd-verdict-text-main {
-    font-size: 1.25rem;
-    font-weight: 700;
-}
-.sd-verdict-spam .sd-verdict-text-main { color: #A63A2E; }
-.sd-verdict-ham .sd-verdict-text-main { color: #2F6B4F; }
-.sd-verdict-text-sub {
-    font-size: 0.88rem;
-    color: #4a4636;
-    margin-top: 0.15rem;
-}
-
-.sd-risk-row {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.82rem;
-    color: #4a4636;
-    margin: 0.4rem 0 1.2rem 0;
-}
+.sd-gauge-wrap { flex-shrink: 0; }
+.sd-verdict-block { flex: 1; min-width: 180px; }
+.sd-verdict-headline { font-weight: 800; font-size: 1.35rem; margin-bottom: 0.2rem; }
+.sd-verdict-spam .sd-verdict-headline { color: #B91C1C; }
+.sd-verdict-ham .sd-verdict-headline { color: #15803D; }
+.sd-verdict-sub { color: #6B7280; font-size: 0.9rem; }
 .sd-risk-chip {
+    display: inline-block;
+    margin-top: 0.6rem;
     font-weight: 700;
-    padding: 0.1rem 0.5rem;
-    border-radius: 4px;
-    text-transform: uppercase;
     font-size: 0.72rem;
     letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.65rem;
+    border-radius: 20px;
 }
-.sd-risk-low { background: #E9F5EE; color: #2F6B4F; }
-.sd-risk-medium { background: #FCF3E0; color: #92660E; }
-.sd-risk-high { background: #FCEBEA; color: #A63A2E; }
+.sd-risk-low { background: #DCFCE7; color: #15803D; }
+.sd-risk-medium { background: #FEF3C7; color: #92400E; }
+.sd-risk-high { background: #FEE2E2; color: #B91C1C; }
 
-/* Plain card used for "why", headers, and link results */
+/* Reasons panel */
 .sd-card {
     background: #FFFFFF;
-    border: 1px solid #E4DFCF;
-    border-radius: 10px;
-    padding: 1rem 1.2rem;
+    border-radius: 14px;
+    padding: 1.1rem 1.3rem;
     margin-bottom: 1rem;
+    box-shadow: 0 4px 14px rgba(30,27,58,0.06);
 }
-.sd-card-title {
-    font-weight: 700;
-    font-size: 0.98rem;
-    color: #1B2A4A;
-    margin-bottom: 0.5rem;
-}
-.sd-reason {
-    display: flex;
-    gap: 0.5rem;
-    padding: 0.3rem 0;
-    font-size: 0.92rem;
-    color: #33301f;
-}
-.sd-reason-icon { flex-shrink: 0; }
+.sd-card-title { font-weight: 700; font-size: 0.95rem; color: #1E1B3A; margin-bottom: 0.6rem; }
+.sd-reason { display: flex; gap: 0.6rem; padding: 0.32rem 0; font-size: 0.92rem; color: #374151; }
 
 .sd-row {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.85rem;
-    color: #2b2a22;
-    padding: 0.3rem 0;
-    border-bottom: 1px dashed #E4DFCF;
+    font-size: 0.83rem;
+    color: #374151;
+    padding: 0.35rem 0;
+    border-bottom: 1px dashed #E5E7EB;
 }
 .sd-row:last-child { border-bottom: none; }
-.sd-row b { color: #1B2A4A; font-family: 'IBM Plex Sans', sans-serif; }
+.sd-row b { color: #1E1B3A; font-family: 'Inter', sans-serif; }
 
 .sd-badge {
     display: inline-block;
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.7rem;
-    letter-spacing: 0.05em;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
-    padding: 0.15rem 0.5rem;
-    border-radius: 4px;
+    padding: 0.14rem 0.5rem;
+    border-radius: 6px;
     font-weight: 600;
+    margin-right: 0.3rem;
 }
-.sd-badge-pass { background: #E9F5EE; color: #2F6B4F; }
-.sd-badge-fail { background: #FCEBEA; color: #A63A2E; }
-.sd-badge-mixed { background: #FCF3E0; color: #92660E; }
-.sd-badge-unknown { background: #EFECE0; color: #57604f; }
+.sd-badge-pass { background: #DCFCE7; color: #15803D; }
+.sd-badge-fail { background: #FEE2E2; color: #B91C1C; }
+.sd-badge-mixed { background: #FEF3C7; color: #92400E; }
+.sd-badge-unknown { background: #F3F4F6; color: #6B7280; }
 
 .sd-footer {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.75rem;
-    color: #8a8367;
+    font-size: 0.72rem;
+    color: #9CA3AF;
     text-align: center;
     margin-top: 2rem;
 }
 
 div.stButton > button[kind="primary"] {
-    background-color: #1B2A4A;
-    border-color: #1B2A4A;
+    background: linear-gradient(135deg, #4338CA, #6D28D9);
+    border: none;
     font-weight: 600;
 }
-div.stButton > button[kind="primary"]:hover {
-    background-color: #142038;
-    border-color: #142038;
+div.stButton > button[kind="primary"]:hover { filter: brightness(1.08); }
+
+.stTabs [data-baseweb="tab-list"] { gap: 4px; }
+.stTabs [data-baseweb="tab"] {
+    font-weight: 600; font-size: 0.9rem;
+    background-color: #E5E7F0;
+    border-radius: 10px 10px 0 0;
+    padding: 8px 18px;
+}
+.stTabs [aria-selected="true"] {
+    background-color: #FFFFFF !important;
+    color: #4338CA !important;
+    border-bottom: 3px solid #4338CA !important;
+}
+.stTabs [data-baseweb="tab-panel"] {
+    background-color: #FFFFFF;
+    padding: 1.3rem 1.4rem 1.5rem 1.4rem;
+    border-radius: 0 14px 14px 14px;
+    box-shadow: 0 4px 14px rgba(30,27,58,0.06);
 }
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
+def svg_gauge(percent: float, size: int = 118) -> str:
+    """A circular risk gauge — green/amber/red arc + big centered percentage."""
+    percent = max(0, min(100, percent))
+    if percent < 34:
+        color = "#16A34A"
+    elif percent < 67:
+        color = "#D97706"
+    else:
+        color = "#DC2626"
+
+    r = (size / 2) - 12
+    circumference = 2 * 3.14159265 * r
+    offset = circumference * (1 - percent / 100)
+    cx = cy = size / 2
+
+    return f"""
+    <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">
+        <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#EEF0F5" stroke-width="12"/>
+        <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="12"
+            stroke-dasharray="{circumference:.1f}" stroke-dashoffset="{offset:.1f}"
+            stroke-linecap="round" transform="rotate(-90 {cx} {cy})"/>
+        <text x="{cx}" y="{cy + 6}" text-anchor="middle" font-family="Inter, sans-serif"
+            font-size="22" font-weight="800" fill="{color}">{percent:.0f}%</text>
+    </svg>
+    """
+
+
 @st.cache_resource
 def load_artifacts():
     model = joblib.load("model/spam_model.pkl")
     vectorizer = joblib.load("model/vectorizer.pkl")
-    return model, vectorizer
+    scaler = joblib.load("model/scaler.pkl")
+    return model, vectorizer, scaler
 
 
-def predict_email(text: str, model, vectorizer) -> dict:
+def predict_email(text: str, model, vectorizer, scaler) -> dict:
     cleaned = clean_text(text)
     tfidf = vectorizer.transform([cleaned])
     features = extract_features(text)
-    engineered = pd.DataFrame([features]).values
-    combined = hstack([tfidf, csr_matrix(engineered)])
+    raw_engineered = pd.DataFrame([features])[FEATURE_ORDER].values
+    scaled_engineered = scaler.transform(raw_engineered)
+    combined = hstack([tfidf, csr_matrix(scaled_engineered)])
 
     pred = model.predict(combined)[0]
     label = "SPAM" if pred == 1 else "HAM"
@@ -189,7 +215,6 @@ def predict_email(text: str, model, vectorizer) -> dict:
 
 
 def risk_level(prob: float) -> tuple[str, str]:
-    """Turn a raw probability into a plain-language risk tier + CSS class."""
     if prob < 0.34:
         return "Low risk", "sd-risk-low"
     if prob < 0.67:
@@ -197,8 +222,7 @@ def risk_level(prob: float) -> tuple[str, str]:
     return "High risk", "sd-risk-high"
 
 
-def explain_signals(text: str, features: dict, is_spam: bool) -> list[str]:
-    """Plain-language reasons behind the verdict, based on the same signals the model sees."""
+def explain_signals(features: dict, is_spam: bool) -> list[str]:
     reasons = []
     if features["num_exclamations"] >= 2:
         reasons.append(("❗", f"Uses urgent or excited punctuation ({features['num_exclamations']} \"!\" marks)"))
@@ -208,50 +232,39 @@ def explain_signals(text: str, features: dict, is_spam: bool) -> list[str]:
         reasons.append(("🔠", "Written largely in CAPITAL LETTERS"))
     if features["num_currency"] >= 1:
         reasons.append(("💰", "Mentions money, prizes, or currency symbols"))
-    if features["length"] < 60:
-        reasons.append(("✂️", "Very short message"))
 
     if not reasons:
         if is_spam:
             reasons.append(("🤖", "Flagged mainly on word choice and phrasing, not a specific red flag above"))
         else:
             reasons.append(("🙂", "No urgent language, suspicious links, or money-related phrases detected"))
-
     return reasons
 
 
 def render_result(result: dict):
-    """The one thing on this page that must be instantly, unambiguously readable."""
     is_spam = result["label"] == "SPAM"
     verdict_class = "sd-verdict-spam" if is_spam else "sd-verdict-ham"
-    icon = "🚨" if is_spam else "✅"
-    headline = "This looks like SPAM" if is_spam else "This looks like a normal email"
+    headline = "Flagged as spam" if is_spam else "Looks legitimate"
     subline = "Treat links and requests in this message with caution." if is_spam else "No major spam signals found."
 
+    pct = (result["spam_probability"] or 0) * 100
+    gauge_svg = svg_gauge(pct)
+    tier, tier_class = risk_level(result["spam_probability"] or 0)
+
     st.markdown(
-        f'<div class="sd-verdict {verdict_class}">'
-        f'<div class="sd-verdict-icon">{icon}</div>'
-        f'<div><div class="sd-verdict-text-main">{headline}</div>'
-        f'<div class="sd-verdict-text-sub">{subline}</div></div></div>',
+        f'<div class="sd-report {verdict_class}"><div class="sd-report-top">'
+        f'<div class="sd-gauge-wrap">{gauge_svg}</div>'
+        f'<div class="sd-verdict-block">'
+        f'<div class="sd-verdict-headline">{headline}</div>'
+        f'<div class="sd-verdict-sub">{subline}</div>'
+        f'<span class="sd-risk-chip {tier_class}">{tier}</span>'
+        f'</div></div></div>',
         unsafe_allow_html=True,
     )
 
-    if result["spam_probability"] is not None:
-        pct = result["spam_probability"] * 100
-        tier, tier_class = risk_level(result["spam_probability"])
-        st.markdown(
-            f'<div class="sd-risk-row">Spam likelihood: <b>{pct:.0f}%</b>'
-            f'<span class="sd-risk-chip {tier_class}">{tier}</span></div>',
-            unsafe_allow_html=True,
-        )
-        st.progress(result["spam_probability"])
-    else:
-        st.caption("This model type reports a label only, no confidence score.")
-
-    reasons = explain_signals(st.session_state.get("_last_text", ""), result["features"], is_spam)
+    reasons = explain_signals(result["features"], is_spam)
     reasons_html = "".join(
-        f'<div class="sd-reason"><span class="sd-reason-icon">{icon}</span><span>{text}</span></div>'
-        for icon, text in reasons
+        f'<div class="sd-reason"><span>{icon}</span><span>{text}</span></div>' for icon, text in reasons
     )
     st.markdown(
         f'<div class="sd-card"><div class="sd-card-title">Why we think this</div>{reasons_html}</div>',
@@ -261,18 +274,14 @@ def render_result(result: dict):
 
 def render_headers(parsed: dict):
     headers = parsed["headers"]
-
     rows_html = ""
-    simple_fields = ["From", "To", "Subject", "Date", "Message-ID"]
-    for field in simple_fields:
+    for field in ["From", "To", "Subject", "Date", "Message-ID"]:
         value = headers.get(field) or "<i>not present</i>"
         rows_html += f'<div class="sd-row"><b>{field}:</b> {value}</div>'
 
     auth_status = authentication_summary(parsed)
-    badge_class = {
-        "pass": "sd-badge-pass", "fail": "sd-badge-fail",
-        "mixed": "sd-badge-mixed", "unknown": "sd-badge-unknown",
-    }[auth_status]
+    badge_class = {"pass": "sd-badge-pass", "fail": "sd-badge-fail",
+                   "mixed": "sd-badge-mixed", "unknown": "sd-badge-unknown"}[auth_status]
     rows_html += (
         f'<div class="sd-row"><b>Authentication-Results:</b> '
         f'<span class="sd-badge {badge_class}">{auth_status}</span></div>'
@@ -306,10 +315,7 @@ def render_link_check(text: str):
     sb_key = st.secrets.get("SAFE_BROWSING_API_KEY", "")
     vt_key = st.secrets.get("VIRUSTOTAL_API_KEY", "")
     us_key = st.secrets.get("URLSCAN_API_KEY", "")
-
-    active = [name for name, key in [
-        ("Google Safe Browsing", sb_key), ("VirusTotal", vt_key), ("urlscan.io", us_key)
-    ] if key]
+    active = [n for n, k in [("Google Safe Browsing", sb_key), ("VirusTotal", vt_key), ("urlscan.io", us_key)] if k]
 
     if not active:
         st.markdown(
@@ -323,73 +329,52 @@ def render_link_check(text: str):
                 st.code(u, language=None)
         return
 
-    st.markdown(
-        f'<div class="sd-card-title" style="margin-top:0.4rem;">'
-        f'🔗 Link intelligence — checking against {", ".join(active)}</div>',
-        unsafe_allow_html=True,
-    )
-
     with st.spinner("Checking links..."):
         rows_html = ""
         any_flagged = False
         for u in urls:
             badges = []
-
             if sb_key:
-                sb_result = check_urls_safe_browsing([u], sb_key)
-                if sb_result["error"]:
-                    badges.append(('<span class="sd-badge sd-badge-unknown">Safe Browsing: error</span>'))
-                elif u in sb_result["flagged_urls"]:
+                sb = check_urls_safe_browsing([u], sb_key)
+                if sb["error"]:
+                    badges.append('<span class="sd-badge sd-badge-unknown">Safe Browsing: error</span>')
+                elif u in sb["flagged_urls"]:
                     badges.append('<span class="sd-badge sd-badge-fail">Safe Browsing: flagged</span>')
                     any_flagged = True
                 else:
                     badges.append('<span class="sd-badge sd-badge-pass">Safe Browsing: clean</span>')
-
             if vt_key:
-                vt_result = check_url_virustotal(u, vt_key)
-                if vt_result["error"]:
+                vt = check_url_virustotal(u, vt_key)
+                if vt["error"]:
                     badges.append('<span class="sd-badge sd-badge-unknown">VirusTotal: error</span>')
-                elif not vt_result["found"]:
+                elif not vt["found"]:
                     badges.append('<span class="sd-badge sd-badge-unknown">VirusTotal: unseen</span>')
-                elif vt_result["malicious"] > 0:
-                    badges.append(
-                        f'<span class="sd-badge sd-badge-fail">VirusTotal: {vt_result["malicious"]}/'
-                        f'{vt_result["total_engines"]} flagged</span>'
-                    )
+                elif vt["malicious"] > 0:
+                    badges.append(f'<span class="sd-badge sd-badge-fail">VirusTotal: {vt["malicious"]}/{vt["total_engines"]} flagged</span>')
                     any_flagged = True
                 else:
-                    badges.append(f'<span class="sd-badge sd-badge-pass">VirusTotal: 0/{vt_result["total_engines"]} flagged</span>')
-
+                    badges.append(f'<span class="sd-badge sd-badge-pass">VirusTotal: 0/{vt["total_engines"]} flagged</span>')
             if us_key:
-                us_result = check_domain_urlscan(u, us_key)
-                if us_result["error"]:
+                us = check_domain_urlscan(u, us_key)
+                if us["error"]:
                     badges.append('<span class="sd-badge sd-badge-unknown">urlscan.io: error</span>')
-                elif us_result["malicious_scan_count"] > 0:
-                    badges.append(
-                        f'<span class="sd-badge sd-badge-fail">urlscan.io: {us_result["malicious_scan_count"]} '
-                        f'malicious scan(s)</span>'
-                    )
+                elif us["malicious_scan_count"] > 0:
+                    badges.append(f'<span class="sd-badge sd-badge-fail">urlscan.io: {us["malicious_scan_count"]} malicious</span>')
                     any_flagged = True
-                elif us_result["scan_count"] > 0:
-                    badges.append(f'<span class="sd-badge sd-badge-pass">urlscan.io: {us_result["scan_count"]} clean scan(s)</span>')
+                elif us["scan_count"] > 0:
+                    badges.append(f'<span class="sd-badge sd-badge-pass">urlscan.io: {us["scan_count"]} clean</span>')
                 else:
                     badges.append('<span class="sd-badge sd-badge-unknown">urlscan.io: no history</span>')
-
             rows_html += f'<div class="sd-row">{u}<br>{" ".join(badges)}</div>'
 
     title = "🔗 Links — threat found" if any_flagged else "🔗 Links — all sources clear"
-    st.markdown(
-        f'<div class="sd-card"><div class="sd-card-title">{title}</div>{rows_html}</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'<div class="sd-card"><div class="sd-card-title">{title}</div>{rows_html}</div>', unsafe_allow_html=True)
 
 
 def render_sender_domain_check(parsed: dict):
-    """Checks the sender's domain against email blacklists via MXToolbox."""
     mx_key = st.secrets.get("MXTOOLBOX_API_KEY", "")
     if not mx_key:
         return
-
     from_header = parsed["headers"].get("From") or ""
     if "@" not in from_header:
         return
@@ -419,27 +404,30 @@ def render_sender_domain_check(parsed: dict):
         )
 
 
-# --- Load model (with a friendly error if training hasn't run yet) ---
+# --- Load model ---
 try:
-    model, vectorizer = load_artifacts()
+    model, vectorizer, scaler = load_artifacts()
 except FileNotFoundError:
     st.error(
         "No trained model found. Run `python train.py` first to create "
-        "`model/spam_model.pkl` and `model/vectorizer.pkl`, then reload this page."
+        "`model/spam_model.pkl`, `model/vectorizer.pkl`, and `model/scaler.pkl`, then reload this page."
     )
     st.stop()
 
 # --- Header ---
-st.markdown('<div class="sd-title">🛡️ Spam Email Detector</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="sd-subtitle">Paste an email or upload a raw file. You\'ll get a clear verdict, '
-    'a risk level, and the plain-language reasons behind it.</div>',
+    '<div class="sd-header"><div class="sd-header-icon">🛡️</div>'
+    '<div class="sd-title">Spam Email Detector</div></div>',
+    unsafe_allow_html=True,
+)
+st.markdown(
+    '<div class="sd-subtitle">Paste an email or upload a raw file for a scan report: '
+    'a risk score, the reasons behind it, and live link/domain checks.</div>',
     unsafe_allow_html=True,
 )
 
 tab_paste, tab_upload = st.tabs(["✏️ Paste text", "📎 Upload email file (.eml)"])
 
-# ---------------- Tab 1: paste text ----------------
 with tab_paste:
     SPAM_EXAMPLES = [
         "CONGRATULATIONS! You've WON a $5000 prize! Click here now: bit.ly/claim-now",
@@ -455,7 +443,7 @@ with tab_paste:
         "Please find attached the quarterly report you asked for. Let me know if you have questions.",
         "Reminder: your dentist appointment is scheduled for 10am next Tuesday.",
         "Thanks for your help with the onboarding docs, really appreciate it!",
-        "Here's the recipe you asked for — hope you enjoy making it this weekend.",
+        "Here's the doc we discussed: https://docs.google.com/document/d/1a2b3c — take a look when you can.",
         "Just checking in to see how the project plans are coming along.",
         "Happy birthday! Hope you have a wonderful day, let's grab coffee soon.",
     ]
@@ -475,16 +463,14 @@ with tab_paste:
         placeholder="Paste email subject + body here...",
     )
 
-    if st.button("Check for spam", type="primary", key="check_paste"):
+    if st.button("Scan this message", type="primary", key="check_paste"):
         if not email_text.strip():
             st.warning("Please enter some email text first.")
         else:
-            st.session_state["_last_text"] = email_text
-            result = predict_email(email_text, model, vectorizer)
+            result = predict_email(email_text, model, vectorizer, scaler)
             render_result(result)
             render_link_check(email_text)
 
-# ---------------- Tab 2: upload .eml file ----------------
 with tab_upload:
     st.caption(
         "Upload a raw email file (`.eml`) — most email clients let you export "
@@ -507,8 +493,7 @@ with tab_upload:
             if not prediction_text.strip():
                 st.warning("No subject or body text could be extracted to classify.")
             else:
-                st.session_state["_last_text"] = prediction_text
-                result = predict_email(prediction_text, model, vectorizer)
+                result = predict_email(prediction_text, model, vectorizer, scaler)
                 render_result(result)
 
                 auth_status = authentication_summary(parsed)
@@ -518,7 +503,7 @@ with tab_upload:
                         "an independent red flag, regardless of the verdict above."
                     )
 
-                with st.expander("View extracted text used for the check"):
+                with st.expander("View extracted text used for the scan"):
                     st.text(prediction_text)
 
                 render_link_check(prediction_text)
