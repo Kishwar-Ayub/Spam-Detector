@@ -7,6 +7,7 @@ Usage:
 """
 
 import argparse
+import os
 import numpy as np
 import pandas as pd
 import joblib
@@ -14,12 +15,15 @@ from scipy.sparse import hstack, csr_matrix
 
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import MinMaxScaler
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score
 
 from preprocess import clean_text, extract_features
+
+FEATURE_ORDER = ["num_exclamations", "num_links", "num_currency", "caps_ratio"]
 
 
 def load_data(path: str) -> pd.DataFrame:
@@ -33,7 +37,20 @@ def load_data(path: str) -> pd.DataFrame:
     return df
 
 
-def build_feature_matrix(texts, vectorizer, fit=False):
+def engineered_matrix(texts) -> np.ndarray:
+    rows = [extract_features(t) for t in texts]
+    return pd.DataFrame(rows)[FEATURE_ORDER].values
+
+
+def build_feature_matrix(texts, vectorizer, scaler, fit=False):
+    """
+    Combines TF-IDF text features with engineered signals (exclamation
+    count, link count, etc). The engineered features are scaled to roughly
+    the same 0-1 range as TF-IDF values before combining — without this,
+    raw counts like message length (which can be in the hundreds) swamp
+    the TF-IDF signal and the model ends up reacting mostly to length
+    rather than actual content.
+    """
     cleaned = [clean_text(t) for t in texts]
 
     if fit:
@@ -41,17 +58,20 @@ def build_feature_matrix(texts, vectorizer, fit=False):
     else:
         tfidf = vectorizer.transform(cleaned)
 
-    engineered = pd.DataFrame([extract_features(t) for t in texts]).values
-    engineered_sparse = csr_matrix(engineered)
+    raw_engineered = engineered_matrix(texts)
+    if fit:
+        scaled_engineered = scaler.fit_transform(raw_engineered)
+    else:
+        scaled_engineered = scaler.transform(raw_engineered)
 
-    combined = hstack([tfidf, engineered_sparse])
+    combined = hstack([tfidf, csr_matrix(scaled_engineered)])
     return combined
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", default="data/emails.csv")
-    parser.add_argument("--model", default="naive_bayes",
+    parser.add_argument("--model", default="logistic_regression",
                          choices=["naive_bayes", "logistic_regression", "svm"])
     args = parser.parse_args()
 
@@ -72,14 +92,15 @@ def main():
         min_df=1,
         stop_words="english",
     )
+    scaler = MinMaxScaler()
 
-    print("Building features (TF-IDF + engineered signals)...")
-    X_train = build_feature_matrix(X_train_text, vectorizer, fit=True)
-    X_test = build_feature_matrix(X_test_text, vectorizer, fit=False)
+    print("Building features (TF-IDF + scaled engineered signals)...")
+    X_train = build_feature_matrix(X_train_text, vectorizer, scaler, fit=True)
+    X_test = build_feature_matrix(X_test_text, vectorizer, scaler, fit=False)
 
     models = {
         "naive_bayes": MultinomialNB(),
-        "logistic_regression": LogisticRegression(max_iter=1000, class_weight="balanced"),
+        "logistic_regression": LogisticRegression(max_iter=1000, class_weight="balanced", C=0.5),
         "svm": LinearSVC(class_weight="balanced"),
     }
     model = models[args.model]
@@ -87,7 +108,6 @@ def main():
     print(f"Training model: {args.model} ...")
     model.fit(X_train, y_train)
 
-    # Cross-validation for a more reliable estimate
     cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring="f1")
     print(f"\n5-fold CV F1 scores: {np.round(cv_scores, 3)}")
     print(f"Mean CV F1: {cv_scores.mean():.3f}")
@@ -102,10 +122,11 @@ def main():
     print("Confusion Matrix (rows=true, cols=predicted) [ham, spam]:")
     print(confusion_matrix(y_test, preds))
 
-    # Save artifacts
+    os.makedirs("model", exist_ok=True)
     joblib.dump(model, "model/spam_model.pkl")
     joblib.dump(vectorizer, "model/vectorizer.pkl")
-    print("\nSaved model/spam_model.pkl and model/vectorizer.pkl")
+    joblib.dump(scaler, "model/scaler.pkl")
+    print("\nSaved model/spam_model.pkl, model/vectorizer.pkl, and model/scaler.pkl")
 
 
 if __name__ == "__main__":
