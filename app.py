@@ -35,6 +35,15 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .stApp { background: radial-gradient(circle at 20% 0%, #161B2C 0%, #0B0E17 55%); }
 [data-testid="stHeader"] { background: transparent; }
 
+/* Broad baseline: any native Streamlit text without a more specific rule
+   below still gets legible light text on this dark background. */
+.stApp, .stApp p, .stApp span, .stApp div, .stApp label,
+.stApp [data-testid="stMarkdownContainer"],
+.stApp [data-testid="stMarkdownContainer"] * {
+    color: #E5E7EB;
+}
+.stApp h1, .stApp h2, .stApp h3 { color: #F1F5F9; }
+
 .sd-header {
     display: flex;
     align-items: center;
@@ -147,6 +156,20 @@ div.stButton > button:not([kind="primary"]) {
 }
 
 .stTabs [data-baseweb="tab-list"] { gap: 4px; }
+[data-testid="stTabs"] button[data-baseweb="tab"],
+[data-testid="stTabs"] button[data-baseweb="tab"] *,
+[data-testid="stTabs"] [role="tab"],
+[data-testid="stTabs"] [role="tab"] * {
+    color: #E5E7EB !important;
+    fill: #E5E7EB !important;
+}
+[data-testid="stTabs"] button[aria-selected="true"],
+[data-testid="stTabs"] button[aria-selected="true"] *,
+[data-testid="stTabs"] [role="tab"][aria-selected="true"],
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] * {
+    color: #A855F7 !important;
+    fill: #A855F7 !important;
+}
 .stTabs [data-baseweb="tab"] {
     font-weight: 600; font-size: 0.9rem;
     background-color: #10141F;
