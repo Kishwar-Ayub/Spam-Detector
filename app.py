@@ -32,7 +32,7 @@ CUSTOM_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-.stApp { background: linear-gradient(180deg, #F3F5F9 0%, #EDEFF5 100%); }
+.stApp { background: radial-gradient(circle at 20% 0%, #161B2C 0%, #0B0E17 55%); }
 [data-testid="stHeader"] { background: transparent; }
 
 .sd-header {
@@ -44,20 +44,21 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .sd-header-icon {
     width: 42px; height: 42px;
     display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(135deg, #4338CA, #6D28D9);
+    background: linear-gradient(135deg, #6366F1, #A855F7);
     border-radius: 12px;
     font-size: 1.3rem;
-    box-shadow: 0 4px 10px rgba(67,56,202,0.25);
+    box-shadow: 0 4px 16px rgba(99,102,241,0.35);
 }
-.sd-title { font-weight: 800; font-size: 1.65rem; color: #1E1B3A; }
-.sd-subtitle { color: #6B7280; font-size: 0.95rem; max-width: 560px; margin: 0.3rem 0 1.4rem 0; }
+.sd-title { font-weight: 800; font-size: 1.65rem; color: #F1F5F9; }
+.sd-subtitle { color: #8B93A7; font-size: 0.95rem; max-width: 560px; margin: 0.3rem 0 1.4rem 0; }
 
 /* Report shell wrapping the result */
 .sd-report {
-    background: #FFFFFF;
+    background: #141928;
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 18px;
     padding: 1.6rem 1.6rem 1.3rem 1.6rem;
-    box-shadow: 0 6px 24px rgba(30,27,58,0.08);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
     margin: 1.2rem 0 1.2rem 0;
 }
 .sd-report-top {
@@ -69,9 +70,9 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .sd-gauge-wrap { flex-shrink: 0; }
 .sd-verdict-block { flex: 1; min-width: 180px; }
 .sd-verdict-headline { font-weight: 800; font-size: 1.35rem; margin-bottom: 0.2rem; }
-.sd-verdict-spam .sd-verdict-headline { color: #B91C1C; }
-.sd-verdict-ham .sd-verdict-headline { color: #15803D; }
-.sd-verdict-sub { color: #6B7280; font-size: 0.9rem; }
+.sd-verdict-spam .sd-verdict-headline { color: #F87171; }
+.sd-verdict-ham .sd-verdict-headline { color: #4ADE80; }
+.sd-verdict-sub { color: #8B93A7; font-size: 0.9rem; }
 .sd-risk-chip {
     display: inline-block;
     margin-top: 0.6rem;
@@ -82,30 +83,31 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     padding: 0.2rem 0.65rem;
     border-radius: 20px;
 }
-.sd-risk-low { background: #DCFCE7; color: #15803D; }
-.sd-risk-medium { background: #FEF3C7; color: #92400E; }
-.sd-risk-high { background: #FEE2E2; color: #B91C1C; }
+.sd-risk-low { background: rgba(74,222,128,0.14); color: #4ADE80; }
+.sd-risk-medium { background: rgba(251,191,36,0.14); color: #FBBF24; }
+.sd-risk-high { background: rgba(248,113,113,0.14); color: #F87171; }
 
 /* Reasons panel */
 .sd-card {
-    background: #FFFFFF;
+    background: #141928;
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 14px;
     padding: 1.1rem 1.3rem;
     margin-bottom: 1rem;
-    box-shadow: 0 4px 14px rgba(30,27,58,0.06);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.35);
 }
-.sd-card-title { font-weight: 700; font-size: 0.95rem; color: #1E1B3A; margin-bottom: 0.6rem; }
-.sd-reason { display: flex; gap: 0.6rem; padding: 0.32rem 0; font-size: 0.92rem; color: #374151; }
+.sd-card-title { font-weight: 700; font-size: 0.95rem; color: #F1F5F9; margin-bottom: 0.6rem; }
+.sd-reason { display: flex; gap: 0.6rem; padding: 0.32rem 0; font-size: 0.92rem; color: #C6CCDB; }
 
 .sd-row {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.83rem;
-    color: #374151;
+    color: #C6CCDB;
     padding: 0.35rem 0;
-    border-bottom: 1px dashed #E5E7EB;
+    border-bottom: 1px dashed rgba(255,255,255,0.08);
 }
 .sd-row:last-child { border-bottom: none; }
-.sd-row b { color: #1E1B3A; font-family: 'Inter', sans-serif; }
+.sd-row b { color: #F1F5F9; font-family: 'Inter', sans-serif; }
 
 .sd-badge {
     display: inline-block;
@@ -118,44 +120,64 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     font-weight: 600;
     margin-right: 0.3rem;
 }
-.sd-badge-pass { background: #DCFCE7; color: #15803D; }
-.sd-badge-fail { background: #FEE2E2; color: #B91C1C; }
-.sd-badge-mixed { background: #FEF3C7; color: #92400E; }
-.sd-badge-unknown { background: #F3F4F6; color: #6B7280; }
+.sd-badge-pass { background: rgba(74,222,128,0.14); color: #4ADE80; }
+.sd-badge-fail { background: rgba(248,113,113,0.14); color: #F87171; }
+.sd-badge-mixed { background: rgba(251,191,36,0.14); color: #FBBF24; }
+.sd-badge-unknown { background: rgba(148,163,184,0.14); color: #94A3B8; }
 
 .sd-footer {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.72rem;
-    color: #9CA3AF;
+    color: #5B6478;
     text-align: center;
     margin-top: 2rem;
 }
 
 div.stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #4338CA, #6D28D9);
+    background: linear-gradient(135deg, #6366F1, #A855F7);
     border: none;
     font-weight: 600;
+    box-shadow: 0 4px 16px rgba(99,102,241,0.3);
 }
-div.stButton > button[kind="primary"]:hover { filter: brightness(1.08); }
+div.stButton > button[kind="primary"]:hover { filter: brightness(1.12); }
+div.stButton > button:not([kind="primary"]) {
+    background-color: #1B2233;
+    color: #E5E7EB;
+    border: 1px solid rgba(255,255,255,0.08);
+}
 
 .stTabs [data-baseweb="tab-list"] { gap: 4px; }
 .stTabs [data-baseweb="tab"] {
     font-weight: 600; font-size: 0.9rem;
-    background-color: #E5E7F0;
+    color: #8B93A7;
+    background-color: #10141F;
     border-radius: 10px 10px 0 0;
     padding: 8px 18px;
 }
 .stTabs [aria-selected="true"] {
-    background-color: #FFFFFF !important;
-    color: #4338CA !important;
-    border-bottom: 3px solid #4338CA !important;
+    background-color: #141928 !important;
+    color: #A855F7 !important;
+    border-bottom: 3px solid #A855F7 !important;
 }
 .stTabs [data-baseweb="tab-panel"] {
-    background-color: #FFFFFF;
+    background-color: #141928;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-top: none;
     padding: 1.3rem 1.4rem 1.5rem 1.4rem;
     border-radius: 0 14px 14px 14px;
-    box-shadow: 0 4px 14px rgba(30,27,58,0.06);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
 }
+
+.stTextArea textarea {
+    background-color: #10141F;
+    color: #E5E7EB;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+[data-testid="stFileUploaderDropzone"] {
+    background-color: #10141F;
+    border: 1px dashed rgba(255,255,255,0.15);
+}
+.stCaption, [data-testid="stCaptionContainer"] { color: #8B93A7 !important; }
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
@@ -165,11 +187,11 @@ def svg_gauge(percent: float, size: int = 118) -> str:
     """A circular risk gauge — green/amber/red arc + big centered percentage."""
     percent = max(0, min(100, percent))
     if percent < 34:
-        color = "#16A34A"
+        color = "#4ADE80"
     elif percent < 67:
-        color = "#D97706"
+        color = "#FBBF24"
     else:
-        color = "#DC2626"
+        color = "#F87171"
 
     r = (size / 2) - 12
     circumference = 2 * 3.14159265 * r
@@ -178,7 +200,7 @@ def svg_gauge(percent: float, size: int = 118) -> str:
 
     return f"""
     <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">
-        <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#EEF0F5" stroke-width="12"/>
+        <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#232B3F" stroke-width="12"/>
         <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="12"
             stroke-dasharray="{circumference:.1f}" stroke-dashoffset="{offset:.1f}"
             stroke-linecap="round" transform="rotate(-90 {cx} {cy})"/>
