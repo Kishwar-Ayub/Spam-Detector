@@ -5,6 +5,8 @@ Text preprocessing utilities for the spam detector.
 import re
 import string
 
+from url_utils import extract_urls
+
 
 def clean_text(text: str) -> str:
     """
@@ -38,13 +40,20 @@ def extract_features(raw_text: str) -> dict:
     """
     Engineered signals often predictive of spam, independent of the
     TF-IDF bag-of-words representation.
+
+    num_links uses the same broad URL detector as the rest of the app
+    (extract_urls), which catches bare-domain/shortened links like
+    "bit.ly/x92kf" — not just http(s):// or www. links. A narrower
+    regex here previously caused this feature to be ~always zero in
+    training, which made the model unreliable on any real email
+    containing an actual link.
     """
     text = str(raw_text)
     n_chars = max(len(text), 1)
 
     return {
         "num_exclamations": text.count("!"),
-        "num_links": len(re.findall(r"https?://|www\.", text)),
+        "num_links": len(extract_urls(text)),
         "num_currency": len(re.findall(r"[$£€]", text)),
         "caps_ratio": sum(1 for c in text if c.isupper()) / n_chars,
         "num_digits": sum(1 for c in text if c.isdigit()),
