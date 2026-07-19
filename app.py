@@ -216,6 +216,17 @@ div.stButton > button:not([kind="primary"]) {
     border: 1px dashed rgba(255,255,255,0.15);
 }
 [data-testid="stFileUploaderDropzone"] * { color: #E5E7EB !important; }
+[data-testid="stFileUploaderDropzone"] button {
+    background-color: #DC2626 !important;
+    border: 1px solid #DC2626 !important;
+    color: #FFFFFF !important;
+    font-weight: 600;
+}
+[data-testid="stFileUploaderDropzone"] button:hover {
+    background-color: #B91C1C !important;
+    border-color: #B91C1C !important;
+}
+[data-testid="stFileUploaderDropzone"] button * { color: #FFFFFF !important; }
 .stCaption, [data-testid="stCaptionContainer"] { color: #9CA3AF !important; }
 </style>
 """
