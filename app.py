@@ -149,18 +149,22 @@ div.stButton > button:not([kind="primary"]) {
 .stTabs [data-baseweb="tab-list"] { gap: 4px; }
 .stTabs [data-baseweb="tab"] {
     font-weight: 600; font-size: 0.9rem;
-    color: #E5E7EB;
     background-color: #10141F;
     border-radius: 10px 10px 0 0;
     padding: 8px 18px;
 }
-.stTabs [data-baseweb="tab"] p { color: #E5E7EB !important; }
+.stTabs [data-baseweb="tab"],
+.stTabs [data-baseweb="tab"] * {
+    color: #E5E7EB !important;
+}
 .stTabs [aria-selected="true"] {
     background-color: #141928 !important;
-    color: #A855F7 !important;
     border-bottom: 3px solid #A855F7 !important;
 }
-.stTabs [aria-selected="true"] p { color: #A855F7 !important; }
+.stTabs [aria-selected="true"],
+.stTabs [aria-selected="true"] * {
+    color: #A855F7 !important;
+}
 .stTabs [data-baseweb="tab-panel"] {
     background-color: #141928;
     border: 1px solid rgba(255,255,255,0.06);
