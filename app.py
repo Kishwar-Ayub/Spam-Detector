@@ -149,16 +149,18 @@ div.stButton > button:not([kind="primary"]) {
 .stTabs [data-baseweb="tab-list"] { gap: 4px; }
 .stTabs [data-baseweb="tab"] {
     font-weight: 600; font-size: 0.9rem;
-    color: #8B93A7;
+    color: #E5E7EB;
     background-color: #10141F;
     border-radius: 10px 10px 0 0;
     padding: 8px 18px;
 }
+.stTabs [data-baseweb="tab"] p { color: #E5E7EB !important; }
 .stTabs [aria-selected="true"] {
     background-color: #141928 !important;
     color: #A855F7 !important;
     border-bottom: 3px solid #A855F7 !important;
 }
+.stTabs [aria-selected="true"] p { color: #A855F7 !important; }
 .stTabs [data-baseweb="tab-panel"] {
     background-color: #141928;
     border: 1px solid rgba(255,255,255,0.06);
@@ -170,14 +172,24 @@ div.stButton > button:not([kind="primary"]) {
 
 .stTextArea textarea {
     background-color: #10141F;
-    color: #E5E7EB;
+    color: #F1F5F9;
     border: 1px solid rgba(255,255,255,0.08);
+}
+.stTextArea textarea::placeholder {
+    color: #9CA3AF !important;
+    opacity: 1 !important;
+}
+[data-testid="stWidgetLabel"] p,
+[data-testid="stWidgetLabel"] label {
+    color: #F1F5F9 !important;
+    font-weight: 600;
 }
 [data-testid="stFileUploaderDropzone"] {
     background-color: #10141F;
     border: 1px dashed rgba(255,255,255,0.15);
 }
-.stCaption, [data-testid="stCaptionContainer"] { color: #8B93A7 !important; }
+[data-testid="stFileUploaderDropzone"] * { color: #E5E7EB !important; }
+.stCaption, [data-testid="stCaptionContainer"] { color: #9CA3AF !important; }
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
